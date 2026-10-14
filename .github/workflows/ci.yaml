@@ -30,6 +30,14 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version.version }}
+      - name: Cache Tools
+        uses: actions/cache@v6
+        with:
+          path: .tmp/bin
+          # The Makefile rebuilds any tool whose version changed, so a cache
+          # from an older Makefile or go.mod is safe to restore.
+          key: tools-${{ runner.os }}-go${{ matrix.go-version.version }}-${{ hashFiles('Makefile', 'go.mod') }}
+          restore-keys: tools-${{ runner.os }}-go${{ matrix.go-version.version }}-
       - name: Test
         run: make test
       - name: Lint

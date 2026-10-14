@@ -13,6 +13,10 @@ GOLANGCI_VERSION := 2.14.0
 LICENSE_IGNORE := -e /gen/
 # Set to use a different compiler. For example, `GO=go1.18rc1 make test`.
 GO ?= go
+# Tools built from modules in go.mod take their versions from it.
+CONNECT_VERSION := $(shell $(GO) list -m -f '{{.Version}}' connectrpc.com/connect/v2)
+CONNECT_V1_VERSION := $(shell $(GO) list -m -f '{{.Version}}' connectrpc.com/connect)
+PROTOBUF_VERSION := $(shell $(GO) list -m -f '{{.Version}}' google.golang.org/protobuf)
 
 .PHONY: help
 help: ## Describe useful make targets
@@ -77,31 +81,39 @@ checkgenerate:
 	@# Used in CI to verify that `make generate` doesn't produce a diff.
 	test -z "$$(git status --porcelain | tee /dev/stderr)"
 
-$(BIN)/protoc-gen-connect-go: go.mod
+$(BIN)/protoc-gen-connect-go: $(BIN)/.versions/protoc-gen-connect-go@$(CONNECT_VERSION)
 	@mkdir -p $(@D)
 	@# The version of protoc-gen-connect-go is determined by the version in go.mod
 	GOBIN=$(abspath $(@D)) $(GO) install connectrpc.com/connect/v2/cmd/protoc-gen-connect-go
 
-$(BIN)/protoc-gen-connect-go-v1: go.mod
+$(BIN)/protoc-gen-connect-go-v1: $(BIN)/.versions/protoc-gen-connect-go-v1@$(CONNECT_V1_VERSION)
 	@mkdir -p $(@D)
 	@# The version of protoc-gen-connect-go-v1 is determined by the version in go.mod
 	$(GO) build -o $@ connectrpc.com/connect/cmd/protoc-gen-connect-go
 
-$(BIN)/buf: Makefile
+$(BIN)/buf: $(BIN)/.versions/buf@$(BUF_VERSION)
 	@mkdir -p $(@D)
 	GOBIN=$(abspath $(@D)) $(GO) install github.com/bufbuild/buf/cmd/buf@v$(BUF_VERSION)
 
-$(BIN)/license-header: Makefile
+$(BIN)/license-header: $(BIN)/.versions/license-header@$(BUF_VERSION)
 	@mkdir -p $(@D)
 	GOBIN=$(abspath $(@D)) $(GO) install \
 		  github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v$(BUF_VERSION)
 
-$(BIN)/golangci-lint: Makefile
+$(BIN)/golangci-lint: $(BIN)/.versions/golangci-lint@$(GOLANGCI_VERSION)
 	@mkdir -p $(@D)
 	GOBIN=$(abspath $(@D)) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_VERSION)
 
-$(BIN)/protoc-gen-go: Makefile
+$(BIN)/protoc-gen-go: $(BIN)/.versions/protoc-gen-go@$(PROTOBUF_VERSION)
 	@mkdir -p $(@D)
 	@# The version of protoc-gen-go is determined by the version in go.mod
 	GOBIN=$(abspath $(@D)) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go
 
+# A tool depends on a marker file named for its version, not on the file that
+# sets the version, so a tool restored from a cache is rebuilt only when its
+# version changes. Creating a marker removes the tool's other markers, so
+# returning to an earlier version rebuilds too.
+$(BIN)/.versions/%:
+	@mkdir -p $(@D)
+	@rm -f $(@D)/$(firstword $(subst @, ,$*))@*
+	@touch $@
